@@ -31,7 +31,7 @@ pd.options.display.max_columns = 999
 # load data, check sample size
 train = pd.read_csv('data_train.csv', header=None)
 test = pd.read_csv('data_test.csv', header=None)
-print('train data size: ', train.shape, '\ntest data size:', test.shape)
+print('train data size: ', train.shape, 'test data size:', test.shape)
 
 
 # In[3]:
@@ -51,51 +51,9 @@ X_test = test.drop(0, axis=1)
 y_test = test[0]
 
 
-# ## Downsampling
-
-# In[5]:
-
-# check if the two classes are extramely imbalance
-# class 0 : class 1 ~ 2.5 : 1, 
-# pay attention to precision/recall for minority class and decide if unsampling is needed
-print(Counter(train[0]))
-
-
-# In[6]:
-
-from sklearn.utils import resample
-def downsampling(df, target):
-    # Separate majority and minority classes
-    df_majority = df[df[target]==0]
-    df_minority = df[df[target]==1]
-
-    # Downsample majority class
-    df_majority_downsampled = resample(df_majority, 
-                                     replace=False,    # sample without replacement
-                                     n_samples=len(df_minority),     # to match minority class
-                                     random_state=1314) # reproducible results
-
-    # Combine minority class with downsampled majority class
-    df_downsampled = pd.concat([df_majority_downsampled, df_minority])
-    return df_downsampled
-
-
-# In[7]:
-
-train_ds = downsampling(train, 0)
-Counter(train_ds[0])
-
-
-# In[8]:
-
-# separate dependent and independent variables for downsampled data
-X_train_ds = train_ds.drop(0, axis=1)
-y_train_ds = train_ds[0]
-
-
 # ## Check Data Type
 
-# In[9]:
+# In[5]:
 
 # check the data types of dependent varaibles (categorical or continous)
 def check_data_type(data):
@@ -119,6 +77,48 @@ def check_data_type(data):
 col_unique_values = check_data_type(X_train)
 print('Number of Independent Variables: ', len(X_train.columns))
 print(col_unique_values)
+
+
+# ## Downsampling
+
+# In[6]:
+
+# check if the two classes are extramely imbalance
+# class 0 : class 1 ~ 2.5 : 1, 
+# pay attention to precision/recall for minority class and decide if unsampling is needed
+print(Counter(train[0]))
+
+
+# In[7]:
+
+from sklearn.utils import resample
+def downsampling(df, target):
+    # Separate majority and minority classes
+    df_majority = df[df[target]==0]
+    df_minority = df[df[target]==1]
+
+    # Downsample majority class
+    df_majority_downsampled = resample(df_majority, 
+                                     replace=False,    # sample without replacement
+                                     n_samples=len(df_minority),     # to match minority class
+                                     random_state=1314) # reproducible results
+
+    # Combine minority class with downsampled majority class
+    df_downsampled = pd.concat([df_majority_downsampled, df_minority])
+    return df_downsampled
+
+
+# In[8]:
+
+train_ds = downsampling(train, 0)
+Counter(train_ds[0])
+
+
+# In[9]:
+
+# separate dependent and independent variables for downsampled data
+X_train_ds = train_ds.drop(0, axis=1)
+y_train_ds = train_ds[0]
 
 
 # ## Correlation Analysis 
@@ -167,6 +167,8 @@ plot_corr_matrix(corr)
 train[[30, 31, 32, 33]].T.drop_duplicates().T.head()
 
 
+# # Feature Selection
+
 # ## Remove duplicated columns
 # As adjoining nearly correlated variables increases the contribution of their common underlying factor to the PCA, <br/>deplicated columns should be removed before PCA to avoid overemphasize their contribution
 
@@ -187,7 +189,7 @@ for cols in df_grouped_cols['columns'].tolist():
         col_rm_duplicates.extend(np.array(cols))
 
 
-# In[249]:
+# In[14]:
 
 X_train_rm = X_train[col_rm_duplicates]
 X_test_rm = X_test[col_rm_duplicates]
@@ -199,7 +201,7 @@ print('Number of variables after removing duplicated columns: ', X_train_rm.shap
 # - Taking a closer look of this groups, we will find the columns are only slight different in values
 # - So the next step is to perform feature selection to additionally deal with the issue
 
-# In[228]:
+# In[15]:
 
 train_rm = X_train_rm.copy()
 train_rm['y'] = y_train
@@ -208,22 +210,9 @@ print('maximum correlated with y', corr['y'].sort_values(ascending=False)[1])
 plot_corr_matrix(corr)
 
 
-# In[245]:
-
-# import sys
-# sys.setrecursionlimit(1500)
-# df = train_rm.copy()
-# high_corr_cols = [62,68,84,75,67,61,63,83,74,90]
-# for i in high_corr_cols:
-#     sorted_unique = dict((y,x) for x,y in dict(list(enumerate(sorted(df[i].unique())))).iteritems())
-#     df[i] = df[i].replace(sorted_unique)
-
-
-# # Feature Selection
-
 # ## Colinear Variables (VIF > 5)
 
-# In[281]:
+# In[16]:
 
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
@@ -234,7 +223,7 @@ def calculate_vif_(df, threshhold=5.0):
     dropped=True
     while dropped:
         dropped=False
-        vif = [variance_inflation_factor(X[variables].values, ix) for ix in range(X[variables].shape[1])]
+        vif = [variance_inflation_factor(X[variables].values, ix) for ix in range(0, X[variables].shape[1])]
         # drop the columns with maximum VIF as a time until VIF is no longer bigger than threshhold
         maxloc = vif.index(max(vif))
         if max(vif) > threshhold:
@@ -247,8 +236,9 @@ def calculate_vif_(df, threshhold=5.0):
     return [int(i.split('col_')[-1]) for i in X.columns[variables]]
 
 
-# In[282]:
+# In[17]:
 
+# cols_rm_vif stores the list of columns that remain after removing colinear variables
 cols_rm_vif = calculate_vif_(X_train_rm)
 
 
@@ -257,57 +247,60 @@ cols_rm_vif = calculate_vif_(X_train_rm)
 # - Plot the cumulative variance vs. number of PCs included using train data only (first 12 PCs cover 95% of variance) <br/>
 # - Use Grid Search with different models to decide the number of components
 
-# In[214]:
+# In[18]:
 
 # Plot Cumulative Explained Variance Ratio to check the contribution of each PC to the total variance
 # from the plot, we can see that
 # first 8 PCs can explain 90% of the variance, 
-# first 12 PCs can explain 95% of the variance
-# first 22 PCs can explain 99% of the variance
+# first 11 PCs can explain 95% of the variance
+# first 15 PCs can explain 99% of the variance
 from sklearn.decomposition import PCA
 from matplotlib.ticker import MaxNLocator
 pca_full = PCA()
-X_train_full = pca_full.fit_transform(X_train_rm)
+X_train_full = pca_full.fit_transform(X_train[cols_rm_vif])
 cumsum = np.cumsum(pca_full.explained_variance_ratio_)
 ax = plt.figure().gca()
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-plt.plot(cumsum[:20])
+plt.plot(cumsum)
 plt.xlabel('Number of Components')
 plt.ylabel('Cumulative Explained Variance Ratio')
-plt.title("Cumulative Explained Variance Ratio for the First 20 PCs", fontsize=13)
+plt.title("Cumulative Explained Variance Ratio", fontsize=13)
 plt.show()
 
 
-# In[213]:
+# In[19]:
 
-# pca = PCA(n_components=0.99)
-# X_train_reduced = pca.fit_transform(X_train_rm)
-# X_test_reduced = pca.transform(X_test_rm)
-# train_reduced = pd.DataFrame(X_train_reduced)
-# train_reduced['y'] = y_train
-# pd.DataFrame(X_train_reduced).head()
+# use 95% as the cutoff to transform the train and test data
+pca = PCA(n_components=0.95)
+X_train_reduced = pca.fit_transform(X_train[cols_rm_vif])
+X_test_reduced = pca.transform(X_test[cols_rm_vif])
+train_reduced = pd.DataFrame(X_train[cols_rm_vif])
+train_reduced['y'] = y_train
+pd.DataFrame(X_train_reduced).head()
 
 
-# In[110]:
+# ** Visualize First 4 Principal Components **
 
-plt.figure(figsize=(16,4))
+# In[20]:
+
+plt.figure(figsize=(20,6))
 plt.subplot(131)
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==1], X_train_scaled[:, 1][np.array(y_train)==1], color="blue", label="1")
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==0], X_train_scaled[:, 1][np.array(y_train)==0], color="lightgreen", label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==0], X_train_full[:, 1][np.array(y_train)==0], color="lightgreen",  alpha=0.5, label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==1], X_train_full[:, 1][np.array(y_train)==1], color="blue", alpha=0.5, label="1")
 plt.xlabel("1st Principal Component", fontsize=12)
 plt.ylabel("2nd Principal Component", fontsize=12)
 plt.legend(loc="lower right", fontsize=12)
 plt.title("PC1 vs PC2 by binary class ", fontsize=14)
 plt.subplot(132)
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==1], X_train_scaled[:, 2][np.array(y_train)==1], color="blue", label="1")
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==0], X_train_scaled[:, 2][np.array(y_train)==0], color="lightgreen", label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==0], X_train_full[:, 2][np.array(y_train)==0], color="lightgreen",  alpha=0.5, label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==1], X_train_full[:, 2][np.array(y_train)==1], color="blue", alpha=0.5, label="1")
 plt.xlabel("1st Principal Component", fontsize=12)
 plt.ylabel("2nd Principal Component", fontsize=12)
 plt.legend(loc="lower right", fontsize=12)
 plt.title("PC1 vs PC3 by binary class ", fontsize=14)
 plt.subplot(133)
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==1], X_train_scaled[:, 3][np.array(y_train)==1], color="blue", label="1")
-plt.scatter(X_train_scaled[:, 0][np.array(y_train)==0], X_train_scaled[:, 3][np.array(y_train)==0], color="lightgreen", label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==0], X_train_full[:, 3][np.array(y_train)==0], color="lightgreen",  alpha=0.5, label="0")
+plt.scatter(X_train_full[:, 0][np.array(y_train)==1], X_train_full[:, 3][np.array(y_train)==1], color="blue",  alpha=0.5, label="1")
 plt.xlabel("1st Principal Component", fontsize=12)
 plt.ylabel("2nd Principal Component", fontsize=12)
 plt.legend(loc="lower right", fontsize=12)
@@ -315,17 +308,21 @@ plt.title("PC1 vs PC4 by binary class ", fontsize=14)
 
 
 # # Classifiers
-
-# ## Linear Model
-# - Train data: comparing using (1) training data with duplicated columns removed only and (2) training data with VIF score > 5 removed plus 
 # - Apply **standard scaling** to features
 # - Find the best Linear Model over Linear SVM, Logistic Regression, Perceptron with different levels of regularization using **SGDClassifier** 
 # - Use **Grid Search** to tune the parameters for each model, F1 score is used as the criteria (over AUC score) due to data imbalance
 # - n_iter = 3000 is used to approach the full batch model (e.g. sklearn.LogisticRegression) accuracy as much as possible
-# - upsampling minority class (1) using class_weight = 'balanced'
-# - fi scoring (balance between precision and recall) used to find the best linear model in Grid Search
+# - Test on upsampling minority class (labeled 1) using class_weight = 'balanced' to compared f1 score
 
-# In[299]:
+# ## Linear Model
+
+# ### Train with unbalanced class
+# - Train data: comparing using <br/>
+#         (1) training data with duplicated columns removed only 
+#         (2) training data with VIF score > 5 removed 
+#         (3) training data with VIF score > 5 removed and PCA applied after 
+
+# In[21]:
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import SGDClassifier
@@ -333,7 +330,10 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import cross_val_score
 
-linear_pipeline = Pipeline([('std_scaler', StandardScaler()),                             ("model", SGDClassifier(class_weight='balanced', n_iter=3000, random_state=1314))
+# setting up the pipeline and grid search
+linear_pipeline = Pipeline([('std_scaler', StandardScaler()),                             ("model", SGDClassifier(n_iter=3000, random_state=1314))
+                           ])
+linear_pipeline_balanced = Pipeline([('std_scaler', StandardScaler()),                             ("model", SGDClassifier(class_weight = 'balanced', n_iter=3000, random_state=1314))
                            ])
 loss_options = ['hinge', 'log', 'squared_hinge', 'perceptron']
 penalty_options = ['l2', 'elasticnet']
@@ -342,15 +342,16 @@ linear_params = {
         'model__penalty': penalty_options
     }
 grid = GridSearchCV(linear_pipeline, cv=5, n_jobs=-1, verbose=1, param_grid=linear_params, scoring='f1')
+grid_balanced = GridSearchCV(linear_pipeline_balanced, cv=5, n_jobs=-1, verbose=1, param_grid=linear_params, scoring='f1')
 
 
-# In[263]:
+# In[22]:
 
 # training data with duplicated columns removed only
 grid.fit(X_train_rm, y_train)
 print('Best Linear Model: Logistic Regression\n')
-print(best_linear_model)
 best_linear_model = grid.best_estimator_
+print(best_linear_model)
 predictions = best_linear_model.predict(X_train_rm)
 print('----------------\nTrain data prediction:\n')
 print(classification_report(y_train, predictions))
@@ -359,14 +360,13 @@ print('----------------\nTest data prediction:\n')
 print(classification_report(y_test, predictions))
 
 
-# In[300]:
+# In[23]:
 
 ## train data with VIF score > 5 removed
 grid.fit(X_train_rm[cols_rm_vif], y_train)
 best_linear_model_rm_vif = grid.best_estimator_
-print('Best Linear Model: Logistic Regression\n')
+print('Best Linear Model: \n')
 print(best_linear_model_rm_vif)
-best_linear_model = grid.best_estimator_
 predictions = best_linear_model_rm_vif.predict(X_train_rm[cols_rm_vif])
 print('----------------\nTrain data prediction:\n')
 print(classification_report(y_train, predictions))
@@ -375,49 +375,76 @@ print('----------------\nTest data prediction:\n')
 print(classification_report(y_test, predictions))
 
 
-# In[298]:
+# In[24]:
 
-from sklearn.metrics import roc_curve, auc
+# training data with VIF score > 5 removed and PCA applied
+grid.fit(X_train_reduced, y_train)
+print('Best Linear Model: \n')
+print(best_linear_model)
+best_linear_model_re = grid.best_estimator_
+predictions = best_linear_model_re.predict(X_train_reduced)
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train, predictions))
+predictions = best_linear_model_re.predict(X_test_reduced)
+print('----------------\nTest data prediction:\n')
+print(classification_report(y_test, predictions))
 
-def plot_roc_auc(actual, prediction):
-    fpr, tpr, thresholds = roc_curve(actual, prediction[:,1])
-    plt.plot(fpr, tpr,'r')
-    plt.plot([0,1],[0,1],'b')
-    plt.title('AUC: {}'.format(auc(fpr,tpr)))
-    plt.show()  
-    
-plot_roc_auc(y_test, best_linear_model_rm_vif.predict_proba(X_test_rm[cols_rm_vif]))
+
+# ** Summary for Linear Classifier using different transformed training data before class balance ** <br/>
+# - The classification accuracies are almost the same with three level of transformed data. 
+# - The major reason can be the little variance across the dataset. <br/>Thus, when removing columns with high correlation, the processing time is reduced but the accuracy remains the same
+
+# ### Train with balanced class
+# - The dataset has some imbalance issue (majority class: minority class ~= 2.5:1) <br/>
+# - In SGDClassifier, set class_weight = 'balanced' so the model will upsample the minority class to make the two classes in equal size
+# - train data use VIF score > 5 removed and PCA applied for quick processing time
+
+# In[25]:
+
+# training data with VIF score > 5 removed and PCA applied
+grid_balanced.fit(X_train_reduced, y_train)
+print('Best Linear Model: \n')
+best_linear_model_re_balanced = grid_balanced.best_estimator_
+print(best_linear_model_re_balanced)
+predictions = best_linear_model_re_balanced.predict(X_train_reduced)
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train, predictions))
+predictions = best_linear_model_re_balanced.predict(X_test_reduced)
+print('----------------\nTest data prediction:\n')
+print(classification_report(y_test, predictions))
 
 
-# In[156]:
+# In[26]:
 
 import pickle
 # save best Linear Classifier - Logistic Regression
 pickle.dump(best_linear_model, open('best_linear_classifier.sav', 'wb'))
 
 
-# ** Linear Classifier Result Summary ** <br/>
-# - The dataset has some imbalance issue (majority class: minority class ~= 2.5:1) <br/>
-# - The best linear model picked up by grid search is Logistic Regression with L2 regularization: <br/> Comparing the training and testing F1 predicting scores (precision, recall and F1), we can see that the scores are pretty close, indicating that the model is neither overfitting nor underfitting
-# - We can see that the minority class still have a low precision and a relatively high recall (almost the same with majority class) even after upsampling of the minority class (label 1) in training data
+# ### Linear Classifier Result Summary 
+# 
+# - The best linear model picked up by grid search is Logistic Regression with L2 regularization using unbalanced train data
+# - Comparing the training and testing scores (precision, recall and F1), we can see that the scores are pretty close, indicating that the model is neither overfitting nor underfitting
+# - We can see that the minority class has a lower precision and a higher recall (almost the same with majority class) after upsampling of the minority class (label 1) in training data while using unbalanced training data, the precision for minority class is higher but recall is much lower
 
 # ## Non-linear Model
+# - Find the best Non-Linear Model over KNN, Random Forest and Multilayer Perceptron models
+# - Gradient Boosting classifier, while less prune to overfitting compared to Random Forest, is computationally expensive for this dataset if we want to tune the hyperparameters. Thus, I used Random Forest only and compared both training and test scores to prevent overfitting
 
-# In[310]:
+# In[27]:
 
-from sklearn.naive_bayes import GaussianNB
+# from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.neural_network import MLPClassifier
 
 
-# In[326]:
+# In[28]:
 
 # Returns the best paramsuration for a model using crosvalidation
 # and grid search
 def best_params(model, name, parameters, X, y):
-    print('Start search: ', name)
+    print('Start to search best hyperparameters for classifier - ' + name)
     grid = GridSearchCV(model, parameters, cv=5,
                        scoring="f1", verbose=1)
     grid.fit(X, y)
@@ -436,11 +463,10 @@ def best_model(classifier_group, X, y):
         classifiers.append(best_params(model, name, parameters, X, y))
  
     for name, score, classifier in classifiers:
-        print('Considering classifier... ' + name)
         if (score > best_score):
             best_score = score
             best_classifier = [name, classifier]
- 
+            
     return best_classifier[1]
  
 # List of candidate family classifiers with parameters for grid
@@ -449,58 +475,166 @@ def nonlinear_models():
     models = []
  
     rf_tuned_parameters = [{'criterion': ['gini', 'entropy'],
-                            'max_depth' : [4, 8, 16],
+                            'max_depth' : [5, 10, 20, 50],
                             'min_samples_leaf' : [1, 5, 10, 20]}]
-    models.append(['RandomForest', RandomForestClassifier(n_jobs=-1), rf_tuned_parameters])
+    models.append(['RandomForest', RandomForestClassifier(n_jobs=-1,random_state=1314), rf_tuned_parameters])
     
-    
-    gbt_tuned_parameters = [{'learning_rate': [0.1, 0.05, 0.01],
-                              'max_depth': [4, 8, 16],
-                              'min_samples_leaf': [1, 5, 10, 20]}]
-    models.append(['GradientBoostingTree', GradientBoostingClassifier(), gbt_tuned_parameters])
     
     
     knn_tuned_parameters = [{"n_neighbors": [5, 10, 20, 50]}]
     models.append(['kNN', KNeighborsClassifier(n_jobs=-1), knn_tuned_parameters])
     
-    # (no of inputs + no of outputs) ^ 0.5 + range(1,10)
-    mlp_tuned_parameters = [{'learning_rate': [0.1, 0.05, 0.02, 0.01],
+    
+    mlp_tuned_parameters = [{'learning_rate': ['invscaling', 'adaptive'],
                              'activation': ['relu', 'logistic'],
-                             "hidden_layer_sizes": [(10,1), (10,2), (15,1), (15,2),(20,1), (20,2)]}]
+                             "hidden_layer_sizes": [(10,), (15,), (20,), (10,5), (15,5), (20,5)]}]
     models.append(['MLP', MLPClassifier(random_state=1314),  mlp_tuned_parameters])
     return models
 
 
-# In[ ]:
+# In[29]:
 
-best_model(nonlinear_models(), X_train_rm, y_train)
+best_nonlinear_model = best_model(nonlinear_models(), X_train, y_train)
 
 
-# In[304]:
+# In[30]:
 
-from sklearn.neural_network import MLPClassifier
-model = MLPClassifier(alpha=1e-5, hidden_layer_sizes=(15, 1), random_state=1)
-model.fit(X_train, y_train)
- 
-# evaluate the classifier
-print("[INFO] evaluating classifier...")
-predictions = model.predict(X_test)
+best_nonlinear_model_downsampling = best_model(nonlinear_models(), X_train_ds, y_train_ds)
+
+
+# In[31]:
+
+best_nonlinear_model_downsampling_rm_vif = best_model(nonlinear_models(), X_train_ds[cols_rm_vif], y_train_ds)
+
+
+# In[32]:
+
+best_nonlinear_model_reduced = best_model(nonlinear_models(), X_train_reduced, y_train)
+
+
+# ** Best Non-Linear Model - data with all features **
+
+# In[33]:
+
+print(best_nonlinear_model)
+predictions = best_nonlinear_model.predict(X_train)
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train, predictions))
+predictions = best_nonlinear_model.predict(X_test)
+print('----------------\nTest data prediction:\n')
 print(classification_report(y_test, predictions))
 
 
-# In[ ]:
+# ** Best Non-Linear Model - downsampling data with all features **
+
+# In[34]:
+
+print(best_nonlinear_model_downsampling)
+predictions = best_nonlinear_model_downsampling.predict(X_train_ds)
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train_ds, predictions))
+predictions = best_nonlinear_model_downsampling.predict(X_test)
+print('----------------\nTest data prediction:\n')
+print(classification_report(y_test, predictions))
 
 
+# ** Best Non-Linear Model - data with VIF > 5 removed and PCA applied**
+
+# In[35]:
+
+print(best_nonlinear_model_reduced)
+predictions = best_nonlinear_model_reduced.predict(X_train_reduced)
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train, predictions))
+predictions = best_nonlinear_model_reduced.predict(X_test_reduced)
+print('----------------\nTest data prediction:\n')
+print(classification_report(y_test, predictions))
+
+
+# ** Best Non-Linear Model - downsampling data data with VIF > 5 removed (PCA not applied)**
+
+# In[36]:
+
+print(best_nonlinear_model_downsampling_rm_vif)
+predictions = best_nonlinear_model_downsampling_rm_vif.predict(X_train_ds[cols_rm_vif])
+print('----------------\nTrain data prediction:\n')
+print(classification_report(y_train_ds, predictions))
+predictions = best_nonlinear_model_downsampling_rm_vif.predict(X_test[cols_rm_vif])
+print('----------------\nTest data prediction:\n')
+print(classification_report(y_test, predictions))
 
 
 # ** Non-linear Classifier Summary** <br/>
-# - Gradient Boosting classifier, while less prune to overfitting compared to Random Forest, 
-# - Non-linear classifier (without upsampling) has a realtively high precision and a low recall compared to linear classifier (还没跑出来我猜的。。）
-# - 你有没有什么别的建议的model 有木有deep learning的必要啊
+# - The model with highest avearge F1 score is MLPClassifier, and the activation function or hidden layer size change do not really make a difference. While Random Forest can also give higher F1 Score in the training data, it is prune to overfit the model and get a slightly unstable test accuracy. So MLPClassifier should be the best model compared Random Forest, KNN and its computation complexity is not too expensive for this dataset.
+# - Similar to Linear model, the model accuracy remains the same after removing duplicated or colinear features and additionally reducing dimensions using PCA.
+# - Non-linear classifier without downsampling has a higher precision and a lower recall compared to the one with balanced samples. <br/> It makes sense because for model trained using balanced data, it tends predict based on the learning that the minority class is as frequent as the majority class, which is not true for test data.
+# 
+
+# ## Note for Picking the Best Model
+# - Although we can pick the best model by selectint the one with the highest average f1 score, in real world, it is important to think about the business question we are trying to solve. For example, if the business question wants to make sure true class 1 is predicted as class 1, than higher precision of class 1 is preferred. On the opposite, if falsely predicting class 0 as class 1 is very bad, then higer recall of class 1 is preffered
+# - Due to the fact that this dataset do not have a lot of complexity in it, a simple Logistic Regression model should be the quick and robust way to trackle the problem. Using Neural Network and adding more hidden layers would be an overkill.
 
 # # Importance Rank
 
+# In[37]:
+
+# Considering that Logistic Regression is the best in this classification problem, 
+# I will use magnitude of the model coefficient times the corresponding standard deviation to rank the importance of features
+# Features that are removed the input are not ranked 
+logreg = SGDClassifier(alpha=0.0001, average=False, class_weight=None, epsilon=0.1,
+       eta0=0.0, fit_intercept=True, l1_ratio=0.15,
+       learning_rate='optimal', loss='log', n_iter=3000, n_jobs=1,
+       penalty='l2', power_t=0.5, random_state=1314, shuffle=True,
+       verbose=0, warm_start=False)
+logreg.fit(X_train[cols_rm_vif], y_train)
+importance = pd.DataFrame(np.std(np.array(X_train[cols_rm_vif]), 0)*abs(logreg.coef_), columns = cols_rm_vif).T.rename(columns = {0: 'standardized adsolute coefficient'})
+importance = importance.sort_values('standardized adsolute coefficient', ascending=False)
+
+
+# In[38]:
+
+# calculate person correlation
+pearson_correlation_rank = pd.DataFrame(train[[0]+cols_rm_vif].corr().ix[0].T.sort_values(ascending=False)).rename(columns={0: 'pearson correlation'})
+
+
+# In[39]:
+
+# calculate importance by Random Forest classifier
+rf = RandomForestClassifier(criterion='entropy',max_depth=20, min_samples_leaf=5, random_state=1314)
+rf.fit(X_train[cols_rm_vif], y_train)
+
+
+# In[40]:
+
+rf_importance = pd.DataFrame(rf.feature_importances_).T
+rf_importance.columns = cols_rm_vif
+rf_importance = rf_importance.T.sort_values(0, ascending=False).rename(columns={0: 'random forest importance'})
+
+
+# ** Comparing 3 ranks **
+# - [standardized adsolute coefficient] is the standardized magnitude of Logistic Regression coefficients 
+# - [random forest importance] is the feature importance extacted from the random forest model
+# - [pearson correlation] measures the linear relationship with dependent variable column 0
+# - comparing the 3 ranks, we can see that ranks are pretty similar across the board. 
+# - Looking at the correlation matrix for top 5 important features, their correlations are pretty close to 0 as well, and that is why they cover the major variation in the dataset
+
+# In[41]:
+
+syn_rank = pd.merge(pd.merge(importance.reset_index(), rf_importance.reset_index()),                     pearson_correlation_rank.reset_index()).set_index('index')
+syn_rank
+
+
+# In[42]:
+
+# correlation matrix for top 5 important features
+train[[6,94,3,67,38]].corr()
+
+
+# **Rank for Features Importance ** <br/>
+# - 6, 94, 3, 67, 38, 52, 5, 92, 4, 19, 91, 40, 24, 93, 41, 23, 95, 39
+# - all the remaining columns are not selected in the model, so has no importance
+
 # In[ ]:
 
-# get the feature rank using the best linear model (logistic) or non-linear model (guess MLP)
+
 
